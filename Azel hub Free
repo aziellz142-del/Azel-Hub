@@ -1,311 +1,416 @@
--- 99 Nights in the Forest Hub v1.3 by Grok (Removed Supers/Scrap + Accurate Names)
--- Features: Auto Farm, ESP, Teleports, Kill Aura, Selective Bring Items, God Mode, Fly, & More
--- UI Lib: Rayfield (clean & mobile-friendly)
+-- Da Hood Script Hub v3 - TOGGLE Silent Aim (Press Once = ON/OFF)
+-- Now with: Toggle (not hold), Highlight, Tracer, Dot, Custom Keybind, "Aiming at [Name]!" notification
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+-- IMPORTANT: This is for educational purposes only
+
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "Azel Hub",
-   LoadingTitle = "Loading Azel Hub...",
+   LoadingTitle = "Loading Azel Hub!",
    LoadingSubtitle = "by Azielz",
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = "99NightsHub",
-      FileName = "config"
-   },
-   Discord = {
-      Enabled = false,
-      Invite = "noinv",
-      RememberJoins = true
-   },
+   ConfigurationSaving = { Enabled = true, FolderName = "DaHoodHubV3" },
    KeySystem = false
 })
 
--- Main Tab
-local MainTab = Window:CreateTab("Main", 4483362458) -- Forest icon
+local CombatTab = Window:CreateTab("Combat")
+local VisualTab = Window:CreateTab("Visuals")
+local MiscTab = Window:CreateTab("Misc")
 
--- Auto Farm Section
-local AutoFarmSection = MainTab:CreateSection("Auto Farm")
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
-Rayfield:CreateToggle({
-   Name = "Auto Chop Trees",
-   CurrentValue = false,
-   Flag = "AutoChop",
-   Callback = function(Value)
-      _G.AutoChop = Value
-      while _G.AutoChop do
-         for _, tree in pairs(workspace.Trees:GetChildren()) do
-            if tree:FindFirstChild("HumanoidRootPart") then
-               firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, tree.HumanoidRootPart, 0)
-               wait(0.1)
-            end
-         end
-         wait(0.5)
-      end
-   end,
-})
-
-Rayfield:CreateToggle({
-   Name = "Auto Collect Chests/Items",
-   CurrentValue = false,
-   Flag = "AutoCollect",
-   Callback = function(Value)
-      _G.AutoCollect = Value
-      spawn(function()
-         while _G.AutoCollect do
-            for _, item in pairs(workspace:GetDescendants()) do
-               if item.Name:find("Chest") or item.Name:find("Gem") or item.Name:find("Fuel") then
-                  game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = item.CFrame
-                  wait(0.2)
-               end
-            end
-            wait(1)
-         end
-      end)
-   end,
-})
-
-Rayfield:CreateToggle({
-   Name = "Auto Rescue Kids",
-   CurrentValue = false,
-   Flag = "AutoKids",
-   Callback = function(Value)
-      _G.AutoKids = Value
-      -- Target missing children NPCs
-   end,
-})
-
--- Combat Section
-local CombatSection = MainTab:CreateSection("Combat")
-
-Rayfield:CreateToggle({
-   Name = "Kill Aura (Deer/Cultists)",
-   CurrentValue = false,
-   Flag = "KillAura",
-   Callback = function(Value)
-      _G.KillAura = Value
-      spawn(function()
-         while _G.KillAura do
-            for _, enemy in pairs(workspace.Enemies:GetChildren()) do -- Adjust path
-               if enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                  enemy.Humanoid.Health = 0
-               end
-            end
-            wait(0.1)
-         end
-      end)
-   end,
-})
-
-Rayfield:CreateToggle({
-   Name = "God Mode",
-   CurrentValue = false,
-   Flag = "GodMode",
-   Callback = function(Value)
-      if Value then
-         game.Players.LocalPlayer.Character.Humanoid.MaxHealth = math.huge
-         game.Players.LocalPlayer.Character.Humanoid.Health = math.huge
-      end
-   end,
-})
-
--- ESP Section
-local ESPSection = MainTab:CreateSection("ESP")
-
-local ESPToggle = Rayfield:CreateToggle({
-   Name = "Full ESP (Items/Enemies/Kids/Campfire)",
-   CurrentValue = false,
-   Flag = "ESP",
-   Callback = function(Value)
-      if Value then
-         -- ESP Script (use Drawing or BillboardGui)
-         loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/UI"))().esp() -- Basic ESP fallback
-      else
-         -- Disable ESP
-      end
-   end,
-})
-
--- Teleports Section
-local TPSection = MainTab:CreateSection("Teleports")
-
-local Teleports = {
-   {"Campfire", Vector3.new(0, 10, 0)}, -- Update coords in-game (F9 console)
-   {"Spawn", Vector3.new(0, 5, 0)},
-   {"Stronghold", Vector3.new(100, 10, 100)},
-   {"Traders", Vector3.new(-50, 5, -50)},
+-- Silent Aim Settings
+getgenv().Settings = {
+    Enabled = false,
+    ToggleKey = Enum.KeyCode.Q,
+    FOV = 120,
+    Prediction = 0.165,
+    TargetPart = "Head",
+    TeamCheck = false,
+    WallCheck = true,
+    
+    -- Visuals
+    Highlight = true,
+    Tracer = true,
+    Dot = true,
+    
+    CurrentTarget = nil
 }
 
-for _, tp in pairs(Teleports) do
-   Rayfield:CreateButton({
-      Name = "TP to " .. tp[1],
-      Callback = function()
-         game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(tp[2])
-      end,
-   })
+-- FOV Circle
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Radius = getgenv().Settings.FOV
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.8
+FOVCircle.Visible = false
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+-- Visuals
+local TracerLine = Drawing.new("Line")
+TracerLine.Visible = false
+TracerLine.Color = Color3.fromRGB(255, 0, 0)
+TracerLine.Thickness = 2
+
+local HeadDot = Drawing.new("Circle")
+HeadDot.Visible = false
+HeadDot.Color = Color3.fromRGB(255, 0, 0)
+HeadDot.Thickness = 2
+HeadDot.Radius = 6
+HeadDot.Filled = true
+
+local TargetHighlight = nil
+
+-- Notification
+local NotifyGui = Instance.new("ScreenGui")
+NotifyGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+NotifyGui.ResetOnSpawn = false
+NotifyGui.Name = "SilentAimNotifications"
+NotifyGui.IgnoreGuiInset = true
+
+local NotifyLabel = Instance.new("TextLabel")
+NotifyLabel.Size = UDim2.new(0, 400, 0, 60)
+NotifyLabel.Position = UDim2.new(0.5, -200, 0, 20)
+NotifyLabel.BackgroundTransparency = 0.4
+NotifyLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+NotifyLabel.TextColor3 = Color3.new(1, 1, 1)
+NotifyLabel.Font = Enum.Font.GothamBold
+NotifyLabel.TextScaled = true
+NotifyLabel.Text = ""
+NotifyLabel.Parent = NotifyGui
+Instance.new("UICorner", NotifyLabel).CornerRadius = UDim.new(0, 12)
+NotifyLabel.Visible = false
+
+local function Notify(text)
+    NotifyLabel.Text = text
+    NotifyLabel.Visible = true
+    NotifyLabel.BackgroundTransparency = 0.4
+    NotifyLabel.TextTransparency = 0
+    
+    task.wait(2)
+    
+    -- Fade out
+    for i = 0.4, 1, 0.05 do
+        NotifyLabel.BackgroundTransparency = i
+        NotifyLabel.TextTransparency = i
+        task.wait(0.03)
+    end
+    
+    NotifyLabel.Visible = false
 end
 
--- Movement Section
-local MoveSection = MainTab:CreateSection("Movement")
-
-Rayfield:CreateToggle({
-   Name = "Fly (N/E for up/down)",
-   CurrentValue = false,
-   Flag = "Fly",
-   Callback = function(Value)
-      loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/UI"))().fly(Value)
-   end,
-})
-
-Rayfield:CreateSlider({
-   Name = "Walk Speed",
-   Range = {16, 500},
-   Increment = 10,
-   CurrentValue = 50,
-   Flag = "Speed",
-   Callback = function(Value)
-      game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value
-   end,
-})
-
--- Misc Tab
-local MiscTab = Window:CreateTab("Misc", 4483362458)
-
-Rayfield:CreateToggle({
-   Name = "Auto Upgrade Campfire",
-   CurrentValue = false,
-   Flag = "AutoFire",
-   Callback = function(Value)
-      -- Auto interact/upgrade campfire
-   end,
-})
-
-Rayfield:CreateToggle({
-   Name = "Infinite Hunger/Thirst",
-   CurrentValue = false,
-   Flag = "InfiniteStats",
-   Callback = function(Value)
-      -- Set hunger/thirst to 100
-   end,
-})
-
--- Selective Bring Section
-local SelectiveSection = MiscTab:CreateSection("Selective Item Bringer")
-
--- Updated toggles with accurate names (no supers/scrap; added scrap variants)
-local ItemToggles = {
-   {Name = "Log", Flag = "BringLog"},
-   {Name = "Wood", Flag = "BringWood"}, -- Alt name for logs
-   {Name = "Bolt", Flag = "BringBolt"},
-   {Name = "Broken Microwave", Flag = "BringMicrowave"}, -- Common scrap for bolts
-   {Name = "UFO Junk", Flag = "BringUFOJunk"}, -- Scrap variant
-   {Name = "Cultist Gem", Flag = "BringCultistGem"},
-   {Name = "Gem of the Forest", Flag = "BringForestGem"},
-   {Name = "Fuel", Flag = "BringFuel"},
-   {Name = "Chest", Flag = "BringChest"},
-   {Name = "Old Axe", Flag = "BringOldAxe"},
-   {Name = "Good Axe", Flag = "BringGoodAxe"},
-   {Name = "Ice Axe", Flag = "BringIceAxe"},
-   {Name = "Old Sack", Flag = "BringOldSack"},
-   {Name = "Good Sack", Flag = "BringGoodSack"},
-   {Name = "Ice Sword", Flag = "BringIceSword"},
-   {Name = "Frozen Shurikens", Flag = "BringShurikens"},
-   {Name = "Snowballs", Flag = "BringSnowballs"},
-   {Name = "Chair", Flag = "BringChair"},
-   {Name = "Sapling", Flag = "BringSapling"},
-   {Name = "Flower", Flag = "BringFlower"},
-}
-
-local SelectedItems = {}
-for _, item in pairs(ItemToggles) do
-   Rayfield:CreateToggle({
-      Name = "Bring " .. item.Name,
-      CurrentValue = false,
-      Flag = item.Flag,
-      Callback = function(Value)
-         SelectedItems[item.Name] = Value
-      end,
-   })
-end
-
--- Enhanced Bring Button (Scans workspace.Items, workspace.Map, etc.)
-Rayfield:CreateButton({
-   Name = "Bring Selected Items (Real Names Detected)",
-   Callback = function()
-      local player = game.Players.LocalPlayer
-      local char = player.Character
-      if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-      local playerPos = char.HumanoidRootPart.CFrame
-      local count = 0
-
-      -- Scan key folders + whole workspace
-      local searchAreas = {workspace, workspace:FindFirstChild("Items"), workspace:FindFirstChild("Map")}
-      for _, area in pairs(searchAreas) do
-         if area then
-            for _, obj in pairs(area:GetDescendants()) do
-               if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Parent then
-                  local objName = obj.Name
-                  local targetPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("PrimaryPart") or obj
-
-                  if targetPart then
-                     for name, enabled in pairs(SelectedItems) do
-                        if enabled and (objName:lower():find(name:lower()) or objName == name) then
-                           targetPart.CFrame = playerPos * CFrame.new(math.random(-5,5), 2, -3)  -- Neat stack + anti-lag spread
-                           count = count + 1
-                           wait(0.03)
+-- Get Closest Player
+local function GetClosest()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    
+    local Closest = nil
+    local Distance = getgenv().Settings.FOV
+    
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if not plr.Character then continue end
+        if not plr.Character:FindFirstChild("HumanoidRootPart") then continue end
+        if not plr.Character:FindFirstChild(getgenv().Settings.TargetPart) then continue end
+        
+        if getgenv().Settings.TeamCheck then
+            if plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+                continue
+            end
+        end
+        
+        local Root = plr.Character.HumanoidRootPart
+        local Part = plr.Character[getgenv().Settings.TargetPart]
+        local Pos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
+        
+        if OnScreen then
+            local MousePos = Vector2.new(Mouse.X, Mouse.Y)
+            local PartPos = Vector2.new(Pos.X, Pos.Y)
+            local Mag = (MousePos - PartPos).Magnitude
+            
+            if Mag < Distance then
+                if getgenv().Settings.WallCheck then
+                    local RaycastParams = RaycastParams.new()
+                    RaycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+                    RaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                    RaycastParams.IgnoreWater = true
+                    
+                    local Origin = Camera.CFrame.Position
+                    local Direction = (Part.Position - Origin).Unit * 1000
+                    local Result = workspace:Raycast(Origin, Direction, RaycastParams)
+                    
+                    if Result then
+                        local HitParent = Result.Instance:FindFirstAncestorOfClass("Model")
+                        if HitParent == plr.Character then
+                            Closest = plr
+                            Distance = Mag
                         end
-                     end
-                  end
-               end
+                    end
+                else
+                    Closest = plr
+                    Distance = Mag
+                end
             end
-         end
-      end
+        end
+    end
+    
+    return Closest
+end
 
-      Rayfield:Notify({
-         Title = "Brought " .. count .. " Items!",
-         Content = "Loot secured! 🌲💎 (Check around your feet)",
-         Duration = 4,
-      })
-   end,
+-- Update Visuals
+local function UpdateVisuals(plr)
+    -- Highlight
+    if TargetHighlight then 
+        TargetHighlight:Destroy()
+        TargetHighlight = nil
+    end
+    
+    if plr and plr.Character and getgenv().Settings.Highlight then
+        TargetHighlight = Instance.new("Highlight")
+        TargetHighlight.FillColor = Color3.fromRGB(255, 0, 0)
+        TargetHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        TargetHighlight.FillTransparency = 0.3
+        TargetHighlight.OutlineTransparency = 0
+        TargetHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        TargetHighlight.Parent = plr.Character
+    end
+    
+    -- Tracer
+    if plr and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and getgenv().Settings.Tracer then
+        local RootPos, OnScreen = Camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+        if OnScreen then
+            TracerLine.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+            TracerLine.To = Vector2.new(RootPos.X, RootPos.Y)
+            TracerLine.Visible = true
+        else
+            TracerLine.Visible = false
+        end
+    else
+        TracerLine.Visible = false
+    end
+    
+    -- Dot
+    if plr and plr.Character and plr.Character:FindFirstChild("Head") and getgenv().Settings.Dot then
+        local HeadPos, OnScreen = Camera:WorldToViewportPoint(plr.Character.Head.Position)
+        if OnScreen then
+            HeadDot.Position = Vector2.new(HeadPos.X, HeadPos.Y)
+            HeadDot.Visible = true
+        else
+            HeadDot.Visible = false
+        end
+    else
+        HeadDot.Visible = false
+    end
+end
+
+-- Hook mouse for Silent Aim
+local function HookMouse()
+    local OldMouseHit
+    local OldMouseTarget
+    
+    -- Store original mouse functions
+    local MouseMeta = getrawmetatable(Mouse)
+    local OldIndex = MouseMeta.__index
+    local OldNewIndex = MouseMeta.__newindex
+    
+    setreadonly(MouseMeta, false)
+    
+    MouseMeta.__index = newcclosure(function(self, key)
+        if getgenv().Settings.Enabled then
+            local Target = GetClosest()
+            
+            if key == "Hit" and Target and Target.Character then
+                local Part = Target.Character:FindFirstChild(getgenv().Settings.TargetPart) or Target.Character.HumanoidRootPart
+                local Predicted = Part.Position + (Part.AssemblyLinearVelocity * getgenv().Settings.Prediction)
+                
+                if Target ~= getgenv().Settings.CurrentTarget then
+                    getgenv().Settings.CurrentTarget = Target
+                    spawn(function() 
+                        Notify("Aiming at " .. (Target.DisplayName or Target.Name) .. "!") 
+                    end)
+                end
+                
+                UpdateVisuals(Target)
+                return CFrame.new(Predicted)
+                
+            elseif key == "Target" and Target and Target.Character then
+                local Part = Target.Character:FindFirstChild(getgenv().Settings.TargetPart) or Target.Character.HumanoidRootPart
+                UpdateVisuals(Target)
+                return Part
+            end
+        end
+        
+        if not getgenv().Settings.Enabled then
+            UpdateVisuals(nil)
+            getgenv().Settings.CurrentTarget = nil
+        end
+        
+        return OldIndex(self, key)
+    end)
+    
+    setreadonly(MouseMeta, true)
+end
+
+-- Initialize the hook
+HookMouse()
+
+-- FOV & Visual Update Loop
+RunService.Heartbeat:Connect(function()
+    if Mouse then
+        FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y)
+    end
+    FOVCircle.Radius = getgenv().Settings.FOV
+    FOVCircle.Visible = getgenv().Settings.Enabled
+    
+    if getgenv().Settings.Enabled then
+        local Target = GetClosest()
+        if Target then
+            UpdateVisuals(Target)
+        else
+            UpdateVisuals(nil)
+        end
+    else
+        UpdateVisuals(nil)
+        getgenv().Settings.CurrentTarget = nil
+    end
+end)
+
+-- Toggle Keybind Detection
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == getgenv().Settings.ToggleKey then
+        getgenv().Settings.Enabled = not getgenv().Settings.Enabled
+        FOVCircle.Visible = getgenv().Settings.Enabled
+        Notify(getgenv().Settings.Enabled and "Silent Aim: ON" or "Silent Aim: OFF")
+        
+        if not getgenv().Settings.Enabled then
+            UpdateVisuals(nil)
+            getgenv().Settings.CurrentTarget = nil
+        end
+    end
+end)
+
+-- GUI Controls
+CombatTab:CreateToggle({
+    Name = "Silent Aim (Toggle)",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().Settings.Enabled = v
+        FOVCircle.Visible = v
+        Notify(v and "Silent Aim: ON" or "Silent Aim: OFF")
+        
+        if not v then
+            UpdateVisuals(nil)
+            getgenv().Settings.CurrentTarget = nil
+        end
+    end
 })
 
--- BONUS: Auto-Detect Button
-Rayfield:CreateButton({
-   Name = "List All Item Models Nearby (Console)",
-   Callback = function()
-      local items = {}
-      for _, obj in pairs(workspace:GetDescendants()) do
-         if obj:IsA("BasePart") and obj.Name:find("Log") or obj.Name:find("Gem") or obj.Name:find("Chest") or obj.Name:find("Axe") then
-            table.insert(items, obj.Name .. " at " .. tostring(obj.Position))
-         end
-      end
-      print("Nearby Items:", table.concat(items, ", "))
-      Rayfield:Notify({Title = "Check F9 Console!", Content = "Item names printed!", Duration = 3})
-   end,
+CombatTab:CreateDropdown({
+    Name = "Toggle Keybind",
+    Options = {"Q","E","T","G","V","C","X","Z","F"},
+    CurrentOption = "Q",
+    Callback = function(opt)
+        getgenv().Settings.ToggleKey = Enum.KeyCode[opt]
+        Notify("Keybind set to " .. opt)
+    end
 })
 
--- Old button for all (kept for convenience)
-Rayfield:CreateButton({
-   Name = "Bring ALL Items (Logs/Fuel/Gems)",
-   Callback = function()
-      -- Fire server events or tween items to player
-      for _, item in pairs(workspace.Items:GetChildren()) do
-         item.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
-      end
-   end,
+CombatTab:CreateSlider({
+    Name = "FOV",
+    Range = {10, 500},
+    Increment = 10,
+    CurrentValue = 120,
+    Callback = function(v) 
+        getgenv().Settings.FOV = v
+        FOVCircle.Radius = v
+    end
 })
 
-Rayfield:CreateButton({
-   Name = "Rejoin (Anti-Kick)",
-   Callback = function()
-      game:GetService("TeleportService"):Teleport(game.PlaceId, game.Players.LocalPlayer)
-   end,
+CombatTab:CreateSlider({
+    Name = "Prediction",
+    Range = {0, 1},
+    Increment = 0.001,
+    CurrentValue = 0.165,
+    Callback = function(v) getgenv().Settings.Prediction = v end
 })
 
--- Notify
-Rayfield:Notify({
-   Title = "Hub Loaded! (v1.3 - Accurate Items Only)",
-   Content = "No supers/scrap—bring real loot like Logs/Bolts/Gems. Survive! 🚀 (Alt acc)",
-   Duration = 3,
-   Image = 4483362458,
+CombatTab:CreateDropdown({
+    Name = "Target Part",
+    Options = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
+    CurrentOption = "Head",
+    Callback = function(v) getgenv().Settings.TargetPart = v end
 })
+
+CombatTab:CreateToggle({
+    Name="Team Check", 
+    CurrentValue = false,
+    Callback=function(v) 
+        getgenv().Settings.TeamCheck = v 
+    end
+})
+
+CombatTab:CreateToggle({
+    Name="Wall Check", 
+    CurrentValue=true, 
+    Callback=function(v) 
+        getgenv().Settings.WallCheck = v 
+    end
+})
+
+-- Visuals Tab
+VisualTab:CreateToggle({
+    Name="Highlight Target", 
+    CurrentValue=true, 
+    Callback=function(v) 
+        getgenv().Settings.Highlight = v 
+        if not v and TargetHighlight then
+            TargetHighlight:Destroy()
+            TargetHighlight = nil
+        end
+    end
+})
+
+VisualTab:CreateToggle({
+    Name="Tracer", 
+    CurrentValue=true, 
+    Callback=function(v) 
+        getgenv().Settings.Tracer = v 
+        if not v then
+            TracerLine.Visible = false
+        end
+    end
+})
+
+VisualTab:CreateToggle({
+    Name="Head Dot", 
+    CurrentValue=true, 
+    Callback=function(v) 
+        getgenv().Settings.Dot = v 
+        if not v then
+            HeadDot.Visible = false
+        end
+    end
+})
+
+-- Clean up on script termination
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then
+        if FOVCircle then FOVCircle:Remove() end
+        if TracerLine then TracerLine:Remove() end
+        if HeadDot then HeadDot:Remove() end
+        if TargetHighlight then TargetHighlight:Destroy() end
+        if NotifyGui then NotifyGui:Destroy() end
+    end
+end)
+
+print("Da Hood Toggle Silent Aim Hub Loaded!")
+print("Press your keybind once to toggle Silent Aim ON/OFF")
